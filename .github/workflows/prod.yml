@@ -3,7 +3,7 @@ name: 🚀 Production CI/CD Pipeline
 env:
   GO_VERSION: '1.21'
   FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-  : ${{ secrets. }}
+  FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
   APP_ENV: production
@@ -162,7 +162,7 @@ jobs:
           # Create production deployment with explicit token
           DEPLOYMENT_URL=$(vercel deploy --prod --token="$VERCEL_TOKEN" \
             --env APP_ENV=production \
-            --env FIREBASE_PROJECT_ID=${{ env.FIREBASE_PROJECT_ID }} \
+            --env FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }} \
             --env FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }})
 
           echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
