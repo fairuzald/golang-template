@@ -15,7 +15,6 @@ on:
       - '**.md'
       - '.gitignore'
       - 'LICENSE'
-      - '.github/**'
       - 'docs/**'
       - '**.txt'
   workflow_dispatch:
