@@ -3,7 +3,6 @@ name: 🚀 Production CI/CD Pipeline
 env:
   GO_VERSION: '1.21'
   FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-  FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
   APP_ENV: production
@@ -85,30 +84,40 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      # Removed the Swagger docs generation step as it was causing issues
-
       - name: 🏗️ Create Output Directory
         run: |
           mkdir -p build
 
       - name: 🏗️ Build Main API Package
         run: |
-          go build -v -ldflags="-s -w" -o build/api ./cmd/api
+          go build -v -ldflags="-s -w" -o build/api ./main.go
+        # Note: Adjust the path to your main.go file if different
 
       - name: 📦 Prepare Production Package
         run: |
           mkdir -p deploy
-          mkdir -p deploy/build
-          cp -r build/api deploy/build/
-          cp -r public deploy/
-
-          # Create docs directory if it doesn't exist (for Vercel)
-          mkdir -p deploy/docs/swagger
-          if [ -d "docs/swagger" ]; then
-            cp -r docs/swagger deploy/docs/
-          fi
-
+          mkdir -p deploy/api
+          cp build/api deploy/api/
+          cp -r public deploy/ || true
           cp vercel.json deploy/
+
+          # Setup Firebase credentials
+          mkdir -p deploy/credentials
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > deploy/credentials/firebase-service-account.json
+
+          # Create package.json if needed for Vercel
+          echo '{
+            "name": "skillup-api",
+            "version": "1.0.0",
+            "private": true
+          }' > deploy/package.json
+
+      - name: 📦 Upload Deployment Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: deploy-artifacts
+          path: deploy/
+          retention-days: 1
 
   deploy:
     name: 🚀 Deploy to Production
@@ -120,16 +129,11 @@ jobs:
       url: ${{ steps.deploy.outputs.url }}
 
     steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: 📦 Copy Build Artifacts
-        run: |
-          mkdir -p deploy/build
-          mkdir -p deploy/public
-          mkdir -p deploy/docs/swagger
-          cp -r public/* deploy/public/ || true
-          cp vercel.json deploy/
+      - name: 📦 Download Deployment Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: deploy-artifacts
+          path: deploy
 
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
@@ -139,32 +143,34 @@ jobs:
       - name: 🛠️ Install Vercel CLI
         run: npm install -g vercel@latest
 
+      - name: 📦 Verify Deployment Artifacts
+        run: |
+          echo "Checking deploy directory contents:"
+          ls -la deploy
+          echo "Checking if Vercel config exists:"
+          ls -la deploy/vercel.json || echo "vercel.json not found"
 
       - name: 🚀 Deploy to Vercel (Production)
         id: deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           cd deploy
 
-          # Debug the environment
-          echo "Checking directory contents:"
-          ls -la
+          # Create .vercel directory and project config
+          mkdir -p .vercel
+          echo "{\"orgId\":\"$VERCEL_ORG_ID\",\"projectId\":\"$VERCEL_PROJECT_ID\"}" > .vercel/project.json
 
-          # Make sure token is available (masked in logs)
-          if [ -z "$VERCEL_TOKEN" ]; then
-            echo "::error::VERCEL_TOKEN is not set"
-            exit 1
-          else
-            echo "VERCEL_TOKEN is set"
-          fi
-
-          # Create production deployment with explicit token
-          DEPLOYMENT_URL=$(vercel deploy --prod --token="$VERCEL_TOKEN" \
+          # Create production deployment with explicit Vercel configuration
+          DEPLOYMENT_URL=$(vercel --prod --confirm --token "$VERCEL_TOKEN" \
+            --build-env APP_ENV=production \
             --env APP_ENV=production \
             --env FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }} \
-            --env FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }})
+            --env FIREBASE_SERVICE_ACCOUNT="@credentials/firebase-service-account.json")
 
+          echo "Deployment URL: $DEPLOYMENT_URL"
           echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
           echo "DEPLOYMENT_URL=$DEPLOYMENT_URL" >> $GITHUB_ENV
 
