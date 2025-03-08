@@ -3,7 +3,7 @@ name: 🚀 Production CI/CD Pipeline
 env:
   GO_VERSION: '1.21'
   FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-  FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+  : ${{ secrets. }}
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
   APP_ENV: production
@@ -139,10 +139,6 @@ jobs:
       - name: 🛠️ Install Vercel CLI
         run: npm install -g vercel@latest
 
-      - name: 📝 Setup Firebase Credentials
-        run: |
-          mkdir -p credentials
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > credentials/firebase-service-account.json
 
       - name: 🚀 Deploy to Vercel (Production)
         id: deploy
@@ -167,7 +163,7 @@ jobs:
           DEPLOYMENT_URL=$(vercel deploy --prod --token="$VERCEL_TOKEN" \
             --env APP_ENV=production \
             --env FIREBASE_PROJECT_ID=${{ env.FIREBASE_PROJECT_ID }} \
-            --env FIREBASE_SERVICE_ACCOUNT='@credentials/firebase-service-account.json')
+            --env FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }})
 
           echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
           echo "DEPLOYMENT_URL=$DEPLOYMENT_URL" >> $GITHUB_ENV
