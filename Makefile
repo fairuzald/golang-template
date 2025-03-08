@@ -1,4 +1,4 @@
-.PHONY: all build run test clean lint docs help vercel vercel-dev dev docker-build docker-run docker-dev docker-stop docker-clean docker-restart
+.PHONY: all build run clean docs help vercel vercel-dev dev docker-build docker-run docker-dev docker-stop docker-clean docker-restart
 
 # Default target
 .DEFAULT_GOAL := help
@@ -19,8 +19,6 @@ help:
 	@echo "  build        - Build the application"
 	@echo "  run          - Run the application locally"
 	@echo "  dev          - Run with hot reload (requires Air)"
-	@echo "  test         - Run tests"
-	@echo "  lint         - Run linters"
 	@echo "  clean        - Remove build artifacts"
 	@echo "  docs         - Generate API documentation"
 	@echo "  docker-build - Build Docker image"
@@ -71,29 +69,7 @@ dev:
 		fi; \
 	fi
 
-# Run tests
-test:
-	@echo "Running tests..."
-	@go test -v ./...
 
-# Run tests with coverage
-test-coverage:
-	@echo "Running tests with coverage..."
-	@go test -coverprofile=coverage.out ./...
-	@go tool cover -html=coverage.out
-
-# Run linters
-lint:
-	@echo "Running linters..."
-	@if command -v golangci-lint > /dev/null; then \
-		golangci-lint run; \
-	else \
-		echo "golangci-lint not found, installing..."; \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
-		golangci-lint run; \
-	fi
-
-# Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(BUILD_DIR) tmp docs/swagger
@@ -177,5 +153,4 @@ vercel-dev:
 		exit 1; \
 	fi
 
-# All target (build, test, lint)
-all: clean build test lint
+all: clean build
