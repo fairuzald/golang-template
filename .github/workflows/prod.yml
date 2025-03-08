@@ -33,13 +33,13 @@ permissions:
   issues: write
 
 jobs:
-  deploy:
-    name: 🚀 Deploy to Production
+  initialize:
+    name: 🎯 Initialize Production Build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment:
-      name: production
-      url: ${{ steps.deploy.outputs.url }}
+    timeout-minutes: 5
+    outputs:
+      commit-message: ${{ steps.get-commit-message.outputs.message }}
+      deploy-notes: ${{ steps.get-deploy-notes.outputs.notes }}
 
     steps:
       - name: 📥 Checkout Repository
@@ -69,10 +69,66 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: 🏗️ Build Main API Package
+  build:
+    name: 🏗️ Production Build
+    needs: [initialize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Go Environment
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: 🏗️ Create Output Directory
         run: |
           mkdir -p build
+
+      - name: 🏗️ Build Main API Package
+        run: |
           go build -v -ldflags="-s -w" -o build/api ./cmd/api/main.go
+
+      - name: 📦 Prepare Production Package
+        run: |
+          mkdir -p deploy
+          mkdir -p deploy/api
+          cp build/api deploy/api/
+          cp -r public deploy/ || true
+          cp vercel.json deploy/
+
+          # Create package.json if needed for Vercel
+          echo '{
+            "name": "skillup-api",
+            "version": "1.0.0",
+            "private": true
+          }' > deploy/package.json
+
+      - name: 📦 Upload Deployment Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-artifacts
+          path: deploy/
+          retention-days: 1
+
+  deploy:
+    name: 🚀 Deploy to Production
+    needs: [initialize, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - name: 📦 Download Deployment Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: deploy-artifacts
+          path: deploy
 
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
@@ -82,24 +138,31 @@ jobs:
       - name: 🛠️ Install Vercel CLI
         run: npm install -g vercel@latest
 
+      - name: 📦 Verify Deployment Artifacts
+        run: |
+          echo "Checking deploy directory contents:"
+          ls -la deploy
+          echo "Checking if Vercel config exists:"
+          ls -la deploy/vercel.json || echo "vercel.json not found"
+
       - name: 🚀 Deploy to Vercel (Production)
         id: deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          # Create a simplified deployment structure
-          echo '{
-            "name": "skillup-api",
-            "version": "1.0.0",
-            "private": true
-          }' > package.json
+          cd deploy
 
-          # Deploy directly using vercel CLI
-          echo "Deploying to Vercel"
-          DEPLOYMENT_URL=$(vercel --prod --yes --token "${{ secrets.VERCEL_TOKEN }}" \
-            --scope "${{ secrets.VERCEL_ORG_ID }}" \
+          # Create .vercel directory and project config
+          mkdir -p .vercel
+          echo "{\"orgId\":\"$VERCEL_ORG_ID\",\"projectId\":\"$VERCEL_PROJECT_ID\"}" > .vercel/project.json
+
+          # Create production deployment with explicit Vercel configuration
+          DEPLOYMENT_URL=$(vercel --prod --yes --token "$VERCEL_TOKEN" \
+            --build-env APP_ENV=production \
             --env APP_ENV=production \
-            --env FIREBASE_PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --env FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }} \
             --env FIREBASE_SERVICE_ACCOUNT="${{ secrets.FIREBASE_SERVICE_ACCOUNT }}")
 
           echo "Deployment URL: $DEPLOYMENT_URL"
@@ -126,10 +189,17 @@ jobs:
               console.log(`Failed to create tag: ${error.message}`);
             }
 
+  monitor:
+    name: 📊 Post-Deployment Monitoring
+    needs: [initialize, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: success()
+
+    steps:
       - name: 🔍 Verify Deployment Health
-        if: success()
         run: |
-          HEALTH_URL="${{ steps.deploy.outputs.url }}/api/health"
+          HEALTH_URL="${{ needs.deploy.outputs.url }}/api/health"
           echo "Checking deployment health at: $HEALTH_URL"
 
           # Wait a bit for the deployment to fully initialize
@@ -148,7 +218,6 @@ jobs:
           fi
 
       - name: 📝 Update Production Status
-        if: success()
         uses: actions/github-script@v7
         with:
           script: |
@@ -176,8 +245,8 @@ jobs:
             const deploymentEntry = {
               date: formatDate(),
               commit: context.sha.slice(0, 7),
-              message: ${{ toJSON(steps.get-commit-message.outputs.message) }},
-              notes: ${{ toJSON(steps.get-deploy-notes.outputs.notes) }},
+              message: ${{ toJSON(needs.initialize.outputs.commit-message) }},
+              notes: ${{ toJSON(needs.initialize.outputs.deploy-notes) }},
               status: '✅',
               url: process.env.DEPLOYMENT_URL || 'unknown',
               duration: getBuildDuration()
@@ -266,8 +335,13 @@ jobs:
               console.log(`Error updating deployment history: ${error.message}`);
             }
 
+  error_handling:
+    name: ⚠️ Error Handling
+    needs: [initialize, deploy]
+    runs-on: ubuntu-latest
+    if: failure() && needs.deploy.result == 'failure'
+    steps:
       - name: 📝 Create Production Failure Alert
-        if: failure()
         uses: actions/github-script@v7
         with:
           script: |
