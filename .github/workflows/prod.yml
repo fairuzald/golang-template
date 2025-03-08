@@ -90,8 +90,7 @@ jobs:
 
       - name: 🏗️ Build Main API Package
         run: |
-          go build -v -ldflags="-s -w" -o build/api ./main.go
-        # Note: Adjust the path to your main.go file if different
+          go build -v -ldflags="-s -w" -o build/api ./cmd/api/main.go
 
       - name: 📦 Prepare Production Package
         run: |
