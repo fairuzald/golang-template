@@ -1,0 +1,263 @@
+name: 🚀 Development CI/CD Pipeline
+
+env:
+  GO_VERSION: '1.21'
+  FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+  FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+on:
+  pull_request:
+    branches: ['dev']
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'docs/**'
+      - '**.txt'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  initialize:
+    name: 🎯 Initialize Build Environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      cache-hit: ${{ steps.go-cache.outputs.cache-hit }}
+      commit-message: ${{ steps.get-commit-message.outputs.message }}
+      branch-name: ${{ steps.get-branch-info.outputs.branch }}
+      pr-title: ${{ steps.get-pr-info.outputs.title }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: 🔍 Get Commit Information
+        id: get-commit-message
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "message<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: 🔍 Get Branch Information
+        id: get-branch-info
+        run: |
+          echo "branch=${{ github.head_ref || github.ref_name }}" >> $GITHUB_OUTPUT
+
+      - name: 🔍 Get PR Information
+        id: get-pr-info
+        run: |
+          echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+
+      - name: 🔧 Setup Go Environment
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 📦 Cache Go Modules
+        uses: actions/cache@v3
+        id: go-cache
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-
+            ${{ runner.os }}-go-
+
+
+
+  build:
+    name: 🏗️ Build & Verify
+    needs: [initialize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Go Environment
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 📦 Restore Go Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ github.sha }}
+
+      - name: 🔄 Generate Swagger Docs
+        run: |
+          go install github.com/swaggo/swag/cmd/swag@latest
+          swag init -g main.go --parseDependency
+
+      - name: 🏗️ Build Application
+        run: go build -v -o build/api ./...
+
+      - name: 📦 Prepare Deployment Package
+        run: |
+          mkdir -p deploy
+          cp -r build deploy/
+          cp -r public deploy/
+          cp -r docs deploy/
+          cp vercel.json deploy/
+
+      - name: 📦 Cache Build Artifacts
+        uses: actions/cache@v3
+        with:
+          path: deploy
+          key: deploy-${{ github.sha }}
+
+  deploy:
+    name: 🚀 Deploy to Development
+    needs: [initialize, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: development
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Restore Deployment Artifacts
+        uses: actions/cache@v3
+        with:
+          path: deploy
+          key: deploy-${{ github.sha }}
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 🛠️ Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: 📝 Setup Firebase Credentials
+        run: |
+          mkdir -p credentials
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > credentials/firebase-service-account.json
+
+      - name: 🚀 Deploy to Vercel
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          PREVIEW_DOMAIN="pr-${PR_NUMBER}-skillup-api.vercel.app"
+
+          cd deploy
+          DEPLOYMENT_URL=$(vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --env FIREBASE_PROJECT_ID=${{ env.FIREBASE_PROJECT_ID }} --env FIREBASE_SERVICE_ACCOUNT='@credentials/firebase-service-account.json')
+          vercel alias set $DEPLOYMENT_URL $PREVIEW_DOMAIN --token=${{ secrets.VERCEL_TOKEN }}
+
+          echo "url=https://$PREVIEW_DOMAIN" >> $GITHUB_OUTPUT
+          echo "PREVIEW_URL=https://$PREVIEW_DOMAIN" >> $GITHUB_ENV
+
+      - name: 📝 Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const formatDate = () => {
+              return new Date().toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: false
+              });
+            };
+
+            const commitMsg = '${{ needs.initialize.outputs.commit-message }}';
+            const branchName = '${{ needs.initialize.outputs.branch-name }}';
+            const prTitle = '${{ needs.initialize.outputs.pr-title }}';
+
+            const deploymentComment = `
+            # 🚀 Development Deployment
+
+            ## 📌 Deployment Information
+            | Category | Details |
+            |----------|---------|
+            | 🌿 Branch | \`${branchName}\` |
+            | 📝 PR Title | ${prTitle} |
+            | 🏷️ Environment | Development |
+            | 🔗 Live Preview | [Visit API Preview](${{ env.PREVIEW_URL }}) |
+            | 🔗 Swagger Docs | [View API Docs](${{ env.PREVIEW_URL }}/swagger/index.html) |
+
+            ## 📝 Latest Changes
+            \`\`\`
+            ${commitMsg}
+            \`\`\`
+
+            ## 🔍 Deployment Details
+            - **Commit:** [\`${context.sha.slice(0, 7)}\`](${context.payload.repository.html_url}/commit/${context.sha})
+            - **Build Status:** ✅ Success
+            - **Environment:** Development
+            - **Go Version:** ${{ env.GO_VERSION }}
+
+            > 🕒 Deployed at: ${formatDate()}
+            `;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: deploymentComment
+            });
+
+  error_handling:
+    name: ⚠️ Error Handling
+    needs: [initialize, deploy]
+    runs-on: ubuntu-latest
+    if: failure() && needs.deploy.result == 'failure'
+    steps:
+      - name: 📝 Create Deployment Failure Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const errorComment = `
+            ## ❌ Deployment Failed
+
+            ### 📌 Error Details
+            - **Branch:** \`${{ needs.initialize.outputs.branch-name }}\`
+            - **PR:** #${context.issue.number}
+            - **Commit:** [\`${context.sha.slice(0, 7)}\`](${context.payload.repository.html_url}/commit/${context.sha})
+            - **Time:** ${new Date().toLocaleString()}
+
+            ### 🔍 Troubleshooting Steps
+            1. Check the [Action logs](${context.payload.repository.html_url}/actions/runs/${context.runId})
+            2. Verify your Vercel configuration
+            3. Ensure all environment variables are set correctly
+            4. Check your Firebase credentials
+
+            > ⚠️ Please resolve these issues and retry the deployment
+            `;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: errorComment
+            });

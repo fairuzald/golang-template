@@ -1,0 +1,384 @@
+name: 🚀 Production CI/CD Pipeline
+
+env:
+  GO_VERSION: '1.21'
+  FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+  FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  APP_ENV: production
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.github/**'
+      - 'docs/**'
+      - '**.txt'
+  workflow_dispatch:
+    inputs:
+      deploy_notes:
+        description: 'Deployment notes'
+        required: false
+        default: 'Manual production deployment'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  deployments: write
+  issues: write
+
+jobs:
+  initialize:
+    name: 🎯 Initialize Production Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      cache-hit: ${{ steps.go-cache.outputs.cache-hit }}
+      commit-message: ${{ steps.get-commit-message.outputs.message }}
+      deploy-notes: ${{ steps.get-deploy-notes.outputs.notes }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: 🔍 Get Commit Information
+        id: get-commit-message
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "message<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: 🔍 Get Deploy Notes
+        id: get-deploy-notes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "notes=${{ github.event.inputs.deploy_notes }}" >> $GITHUB_OUTPUT
+          else
+            echo "notes=Automated production deployment" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔧 Setup Go Environment
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 📦 Cache Go Modules
+        uses: actions/cache@v3
+        id: go-cache
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-prod-${{ hashFiles('**/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-go-prod-${{ hashFiles('**/go.sum') }}-
+            ${{ runner.os }}-go-prod-
+
+  build:
+    name: 🏗️ Production Build
+    needs: [initialize]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Go Environment
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 📦 Restore Go Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-prod-${{ hashFiles('**/go.sum') }}-${{ github.sha }}
+
+      - name: 🔄 Generate Swagger Docs
+        run: |
+          go install github.com/swaggo/swag/cmd/swag@latest
+          swag init -g main.go --parseDependency
+
+      - name: 🏗️ Build Production Binary
+        run: |
+          go build -v -ldflags="-s -w" -o build/api ./...
+
+      - name: 📦 Prepare Production Package
+        run: |
+          mkdir -p deploy
+          cp -r build deploy/
+          cp -r public deploy/
+          cp -r docs deploy/
+          cp vercel.json deploy/
+
+      - name: 📦 Cache Build Artifacts
+        uses: actions/cache@v3
+        with:
+          path: deploy
+          key: deploy-prod-${{ github.sha }}
+
+  deploy:
+    name: 🚀 Deploy to Production
+    needs: [initialize, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Restore Production Artifacts
+        uses: actions/cache@v3
+        with:
+          path: deploy
+          key: deploy-prod-${{ github.sha }}
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 🛠️ Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: 📝 Setup Firebase Credentials
+        run: |
+          mkdir -p credentials
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > credentials/firebase-service-account.json
+
+      - name: 🚀 Deploy to Vercel (Production)
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          cd deploy
+
+          # Create production deployment
+          DEPLOYMENT_URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} \
+            --env APP_ENV=production \
+            --env FIREBASE_PROJECT_ID=${{ env.FIREBASE_PROJECT_ID }} \
+            --env FIREBASE_SERVICE_ACCOUNT='@credentials/firebase-service-account.json')
+
+          echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+          echo "DEPLOYMENT_URL=$DEPLOYMENT_URL" >> $GITHUB_ENV
+
+      - name: 🏷️ Create Deployment Tag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+            const tagName = `production-${date}-${context.sha.substring(0, 7)}`;
+
+            try {
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${tagName}`,
+                sha: context.sha
+              });
+
+              console.log(`Created tag: ${tagName}`);
+            } catch (error) {
+              console.log(`Failed to create tag: ${error.message}`);
+            }
+
+  monitor:
+    name: 📊 Post-Deployment Monitoring
+    needs: [initialize, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: success()
+
+    steps:
+      - name: 🔍 Verify Deployment Health
+        run: |
+          HEALTH_URL="${{ needs.deploy.outputs.url }}/api/health"
+          echo "Checking deployment health at: $HEALTH_URL"
+
+          # Wait a bit for the deployment to fully initialize
+          sleep 30
+
+          # Check health endpoint
+          RESPONSE=$(curl -s -o health_response.json -w "%{http_code}" "$HEALTH_URL")
+
+          if [ "$RESPONSE" != "200" ]; then
+            echo "::error::Health check failed with status: $RESPONSE"
+            cat health_response.json
+            exit 1
+          else
+            echo "Health check succeeded!"
+            cat health_response.json
+          fi
+
+      - name: 📝 Update Production Status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const formatDate = () => {
+              return new Date().toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: false
+              });
+            };
+
+            const getBuildDuration = () => {
+              const startTime = new Date(context.payload.repository.updated_at);
+              const endTime = new Date();
+              return Math.round((endTime - startTime) / 1000 / 60);
+            };
+
+            const deploymentEntry = {
+              date: formatDate(),
+              commit: context.sha.slice(0, 7),
+              message: ${{ toJSON(needs.initialize.outputs.commit-message) }},
+              notes: ${{ toJSON(needs.initialize.outputs.deploy-notes) }},
+              status: '✅',
+              url: process.env.DEPLOYMENT_URL,
+              duration: getBuildDuration()
+            };
+
+            const issueTitle = '📢 Production Deployment History';
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: ['production-deployments']
+            });
+
+            const existingIssue = issues.data.find(issue =>
+              issue.title === issueTitle
+            );
+
+            let previousDeployments = [];
+            if (existingIssue) {
+              const deploymentTableRegex = /\| (.*?) \| \[(.*?)\].*? \| (.*?) \| (.*?) \| (.*?) \| (.*?) \|/g;
+              let match;
+              const existingContent = existingIssue.body;
+
+              while ((match = deploymentTableRegex.exec(existingContent)) !== null) {
+                previousDeployments.push({
+                  date: match[1],
+                  commit: match[2],
+                  message: match[3],
+                  notes: match[4],
+                  status: match[5],
+                  url: match[6]
+                });
+              }
+
+              // Keep only last 9 previous deployments
+              previousDeployments = previousDeployments.slice(0, 9);
+            }
+
+            const allDeployments = [deploymentEntry, ...previousDeployments];
+
+            const deploymentHistory = `
+            # 📢 Production Deployment History
+
+            ## 📌 Latest Deployment
+            - **Status:** ✅ Success
+            - **Deployment URL:** [${deploymentEntry.url}](${deploymentEntry.url})
+            - **Commit:** [\`${deploymentEntry.commit}\`](${context.payload.repository.html_url}/commit/${context.sha})
+            - **Time:** ${deploymentEntry.date}
+            - **Duration:** ${deploymentEntry.duration} minutes
+            - **Notes:** ${deploymentEntry.notes}
+            - **Swagger Docs:** [${deploymentEntry.url}/swagger/index.html](${deploymentEntry.url}/swagger/index.html)
+
+            ## 📊 Deployment Log
+            | Date | Commit | Changes | Notes | Status | URL |
+            |------|--------|---------|-------|--------|-----|
+            ${allDeployments.map(d =>
+              `| ${d.date} | [\`${d.commit}\`](${context.payload.repository.html_url}/commit/${d.commit}) | ${d.message} | ${d.notes || '-'} | ${d.status} | [View](${d.url}) |`
+            ).join('\n')}
+
+            ## 🔄 Environment Information
+            - **Go Version:** ${process.env.GO_VERSION}
+            - **Environment:** Production
+            - **Project:** SkillUp API
+
+            > 🕒 Last Updated: ${formatDate()}
+            `;
+
+            if (existingIssue) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: deploymentHistory
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: issueTitle,
+                body: deploymentHistory,
+                labels: ['production-deployments']
+              });
+            }
+
+  error_handling:
+    name: ⚠️ Error Handling
+    needs: [initialize, deploy]
+    runs-on: ubuntu-latest
+    if: failure() && needs.deploy.result == 'failure'
+    steps:
+      - name: 📝 Create Production Failure Alert
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const errorNote = `
+            # 🚨 Production Deployment Failure
+
+            ## ❌ Critical Alert
+            Production deployment has failed and requires immediate attention.
+
+            ### 📌 Failure Details
+            - **Environment:** Production
+            - **Commit:** [\`${context.sha.slice(0, 7)}\`](${context.payload.repository.html_url}/commit/${context.sha})
+            - **Time:** ${new Date().toLocaleString()}
+            - **Action Run:** [View Logs](${context.payload.repository.html_url}/actions/runs/${context.runId})
+
+            ### 🔍 Immediate Actions Required
+            1. Review the [deployment logs](${context.payload.repository.html_url}/actions/runs/${context.runId})
+            2. Check environment variables and secrets
+            3. Verify Vercel configuration
+            4. Review recent changes in the main branch
+
+            ### ⚡ Current Status
+            - Previous production deployment remains active
+            - New changes have not been deployed
+            - Manual intervention required
+
+            > ⚠️ This issue requires immediate attention from the development team.
+            `;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 URGENT: Production Deployment Failure - ${new Date().toLocaleString()}`,
+              body: errorNote,
+              labels: ['deployment-failure', 'high-priority', 'production']
+            });

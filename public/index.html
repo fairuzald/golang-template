@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SkillUp API</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --primary: #6366f1;
+        --primary-dark: #4f46e5;
+        --secondary: #10b981;
+        --accent: #8b5cf6;
+        --dark: #0f172a;
+        --gray-50: #f8fafc;
+        --gray-100: #f1f5f9;
+        --gray-200: #e2e8f0;
+        --gray-700: #334155;
+        --gray-800: #1e293b;
+        --text-light: #94a3b8;
+        --border: #e2e8f0;
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1),
+          0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+          0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+          0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        line-height: 1.6;
+        color: var(--dark);
+        background-color: var(--gray-50);
+        min-height: 100vh;
+      }
+
+      .nav-container {
+        position: relative;
+        z-index: 10;
+      }
+
+      .navbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.25rem 2rem;
+        background-color: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(8px);
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        box-shadow: var(--shadow);
+      }
+
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        color: var(--dark);
+      }
+
+      .logo span {
+        font-weight: 700;
+        font-size: 1.5rem;
+        background: linear-gradient(
+          90deg,
+          var(--primary) 0%,
+          var(--accent) 100%
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 2rem;
+        font-weight: 500;
+      }
+
+      .nav-links a {
+        color: var(--gray-700);
+        text-decoration: none;
+        transition: color 0.2s ease;
+        font-size: 0.95rem;
+      }
+
+      .nav-links a:hover {
+        color: var(--primary);
+      }
+
+      .nav-links .active {
+        color: var(--primary);
+        position: relative;
+      }
+
+      .nav-links .active::after {
+        content: "";
+        position: absolute;
+        bottom: -5px;
+        left: 0;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          var(--primary) 0%,
+          var(--accent) 100%
+        );
+        border-radius: 1px;
+      }
+
+      .hero {
+        padding: 9rem 2rem 6rem;
+        text-align: center;
+        background: linear-gradient(
+            rgba(255, 255, 255, 0.9),
+            rgba(255, 255, 255, 0.9)
+          ),
+          url("https://images.unsplash.com/photo-1451187580459-43490279c0fa?ixlib=rb-1.2.1&auto=format&fit=crop&w=1920&q=80");
+        background-size: cover;
+        background-position: center;
+        position: relative;
+      }
+
+      .hero::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 100%;
+        background: linear-gradient(
+          180deg,
+          var(--primary) 0%,
+          rgba(99, 102, 241, 0) 100%
+        );
+        opacity: 0.05;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 2rem;
+        position: relative;
+      }
+
+      .hero h1 {
+        font-size: 3.5rem;
+        font-weight: 800;
+        line-height: 1.2;
+        margin-bottom: 1.5rem;
+        background: linear-gradient(
+          90deg,
+          var(--primary-dark) 0%,
+          var(--accent) 100%
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .hero p {
+        font-size: 1.25rem;
+        color: var(--gray-700);
+        max-width: 700px;
+        margin: 0 auto 2.5rem;
+      }
+
+      .btn-group {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        margin-bottom: 3rem;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        box-shadow: var(--shadow-md);
+      }
+
+      .btn-primary {
+        background-color: var(--primary);
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background-color: var(--primary-dark);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+      }
+
+      .btn-secondary {
+        background-color: white;
+        color: var(--primary);
+        border: 1px solid var(--border);
+      }
+
+      .btn-secondary:hover {
+        background-color: var(--gray-50);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+      }
+
+      .features {
+        padding: 6rem 0;
+      }
+
+      .section-header {
+        text-align: center;
+        margin-bottom: 4rem;
+      }
+
+      .section-header h2 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        color: var(--dark);
+      }
+
+      .section-header p {
+        color: var(--gray-700);
+        max-width: 700px;
+        margin: 0 auto;
+      }
+
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+      }
+
+      .feature-card {
+        background-color: white;
+        border-radius: 1rem;
+        padding: 2rem;
+        box-shadow: var(--shadow-md);
+        transition: all 0.3s ease;
+        border: 1px solid var(--border);
+      }
+
+      .feature-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-lg);
+      }
+
+      .feature-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        background: linear-gradient(
+          135deg,
+          var(--primary) 0%,
+          var(--accent) 100%
+        );
+        color: white;
+        font-size: 1.5rem;
+        box-shadow: var(--shadow-md);
+      }
+
+      .feature-card h3 {
+        font-size: 1.25rem;
+        margin-bottom: 1rem;
+        font-weight: 600;
+      }
+
+      .feature-card p {
+        color: var(--gray-700);
+      }
+
+      .api-docs {
+        padding: 6rem 0;
+        background-color: white;
+      }
+
+      .api-container {
+        background-color: var(--gray-100);
+        border-radius: 1rem;
+        padding: 2rem;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
+
+      .endpoint {
+        margin-bottom: 2rem;
+        padding-bottom: 2rem;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .endpoint:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+      }
+
+      .endpoint-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+
+      .method {
+        padding: 0.35rem 0.75rem;
+        border-radius: 0.3rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        margin-right: 1rem;
+        text-transform: uppercase;
+      }
+
+      .get {
+        background-color: #60a5fa;
+        color: white;
+      }
+
+      .post {
+        background-color: #10b981;
+        color: white;
+      }
+
+      .path {
+        font-family: "SF Mono", "Consolas", monospace;
+        font-size: 1rem;
+        color: var(--dark);
+      }
+
+      .endpoint p {
+        margin-bottom: 1rem;
+        color: var(--gray-700);
+      }
+
+      .response-box {
+        background-color: var(--dark);
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        overflow-x: auto;
+      }
+
+      .response-json {
+        font-family: "SF Mono", "Consolas", monospace;
+        font-size: 0.9rem;
+        color: #e2e8f0;
+        line-height: 1.5;
+      }
+
+      .json-key {
+        color: #f59e0b;
+      }
+
+      .json-string {
+        color: #10b981;
+      }
+
+      .json-number {
+        color: #60a5fa;
+      }
+
+      .json-boolean {
+        color: #f43f5e;
+      }
+
+      .action-link {
+        display: inline-block;
+        margin-top: 2rem;
+        font-weight: 500;
+        color: var(--primary);
+        text-decoration: none;
+        transition: all 0.2s ease;
+      }
+
+      .action-link:hover {
+        color: var(--primary-dark);
+      }
+
+      .action-link i {
+        margin-left: 0.5rem;
+        transition: transform 0.2s ease;
+      }
+
+      .action-link:hover i {
+        transform: translateX(3px);
+      }
+
+      footer {
+        background-color: var(--dark);
+        padding: 4rem 0;
+        color: white;
+      }
+
+      .footer-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+
+      .footer-logo {
+        margin-bottom: 2rem;
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+
+      .footer-links {
+        display: flex;
+        gap: 2rem;
+        margin-bottom: 2rem;
+      }
+
+      .footer-links a {
+        color: var(--gray-200);
+        text-decoration: none;
+        transition: color 0.2s ease;
+      }
+
+      .footer-links a:hover {
+        color: white;
+      }
+
+      .copyright {
+        color: var(--text-light);
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 768px) {
+        .navbar {
+          padding: 1rem;
+        }
+
+        .nav-links {
+          display: none;
+        }
+
+        .hero {
+          padding: 7rem 1rem 4rem;
+        }
+
+        .hero h1 {
+          font-size: 2.5rem;
+        }
+
+        .hero p {
+          font-size: 1.1rem;
+        }
+
+        .btn-group {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .btn {
+          width: 100%;
+          max-width: 300px;
+          justify-content: center;
+        }
+
+        .section-header h2 {
+          font-size: 2rem;
+        }
+
+        .feature-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Code animation */
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .response-box {
+        animation: fadeIn 0.5s ease-out;
+      }
+
+      .feature-card {
+        animation: fadeIn 0.5s ease-out;
+        animation-fill-mode: both;
+      }
+
+      .feature-card:nth-child(1) {
+        animation-delay: 0.1s;
+      }
+      .feature-card:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .feature-card:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nav-container">
+      <nav class="navbar">
+        <a href="/" class="logo">
+          <i class="fas fa-code"></i>
+          <span>SkillUp API</span>
+        </a>
+        <div class="nav-links">
+          <a href="#features" class="active">Features</a>
+          <a href="#api-docs">API</a>
+          <a href="/swagger/index.html">Swagger</a>
+          <a href="https://github.com/yourusername/skillup-be">GitHub</a>
+        </div>
+      </nav>
+    </div>
+
+    <section class="hero">
+      <div class="container">
+        <h1>Modern API for Modern Apps</h1>
+        <p>
+          A high-performance REST API backend built with Go and Gin, designed
+          for scalability, security, and developer happiness.
+        </p>
+        <div class="btn-group">
+          <a href="/swagger/index.html" class="btn btn-primary">
+            <i class="fas fa-book"></i>
+            Explore API Docs
+          </a>
+          <a
+            href="https://github.com/yourusername/skillup-be"
+            class="btn btn-secondary"
+          >
+            <i class="fab fa-github"></i>
+            View on GitHub
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="features">
+      <div class="container">
+        <div class="section-header">
+          <h2>Why Choose Our API</h2>
+          <p>Built with modern standards and best practices in mind</p>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon">
+              <i class="fas fa-bolt"></i>
+            </div>
+            <h3>Lightning Fast</h3>
+            <p>
+              Engineered for performance with Go's concurrency model and
+              efficient database access patterns for minimal response times.
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <i class="fas fa-shield-alt"></i>
+            </div>
+            <h3>Secure by Design</h3>
+            <p>
+              Firebase authentication integration with JWT token validation,
+              rate limiting, and comprehensive input validation.
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <i class="fas fa-code"></i>
+            </div>
+            <h3>Developer Friendly</h3>
+            <p>
+              Consistent response formats, detailed error messages, and
+              comprehensive documentation to make integration a breeze.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="api-docs" class="api-docs">
+      <div class="container">
+        <div class="section-header">
+          <h2>API Reference</h2>
+          <p>Quick overview of key endpoints with examples</p>
+        </div>
+        <div class="api-container">
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method get">GET</span>
+              <span class="path">/api/health</span>
+            </div>
+            <p>Detailed health check with service status information</p>
+            <div class="response-box">
+              <pre class="response-json">{
+  <span class="json-key">"success"</span>: <span class="json-boolean">true</span>,
+  <span class="json-key">"data"</span>: {
+    <span class="json-key">"status"</span>: <span class="json-string">"healthy"</span>,
+    <span class="json-key">"services"</span>: {
+      <span class="json-key">"database"</span>: {
+        <span class="json-key">"status"</span>: <span class="json-string">"ok"</span>
+      },
+      <span class="json-key">"firebase"</span>: {
+        <span class="json-key">"status"</span>: <span class="json-string">"ok"</span>
+      }
+    },
+    <span class="json-key">"timestamp"</span>: <span class="json-string">"2025-03-08T13:45:22Z"</span>
+  }
+}</pre>
+            </div>
+          </div>
+          <a href="/swagger/index.html" class="action-link"
+            >View complete API documentation <i class="fas fa-arrow-right"></i
+          ></a>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-logo">SkillUp API</div>
+          <div class="footer-links">
+            <a href="#features">Features</a>
+            <a href="#api-docs">API Docs</a>
+            <a href="/swagger/index.html">Swagger</a>
+            <a href="https://github.com/yourusername/skillup-be">GitHub</a>
+          </div>
+          <div class="copyright">© 2025 SkillUp API. All rights reserved.</div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
