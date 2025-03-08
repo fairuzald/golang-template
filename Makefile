@@ -143,6 +143,7 @@ vercel:
 		exit 1; \
 	fi
 
+
 # Run Vercel dev environment
 vercel-dev:
 	@echo "Running Vercel dev environment..."
