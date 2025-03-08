@@ -15,6 +15,7 @@ on:
       - '**.md'
       - '.gitignore'
       - 'LICENSE'
+      - '.github/**'
       - 'docs/**'
       - '**.txt'
   workflow_dispatch:
@@ -151,8 +152,20 @@ jobs:
         run: |
           cd deploy
 
-          # Create production deployment
-          DEPLOYMENT_URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} \
+          # Debug the environment
+          echo "Checking directory contents:"
+          ls -la
+
+          # Make sure token is available (masked in logs)
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::VERCEL_TOKEN is not set"
+            exit 1
+          else
+            echo "VERCEL_TOKEN is set"
+          fi
+
+          # Create production deployment with explicit token
+          DEPLOYMENT_URL=$(vercel deploy --prod --token="$VERCEL_TOKEN" \
             --env APP_ENV=production \
             --env FIREBASE_PROJECT_ID=${{ env.FIREBASE_PROJECT_ID }} \
             --env FIREBASE_SERVICE_ACCOUNT='@credentials/firebase-service-account.json')
