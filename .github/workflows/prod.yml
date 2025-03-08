@@ -100,10 +100,6 @@ jobs:
           cp -r public deploy/ || true
           cp vercel.json deploy/
 
-          # Setup Firebase credentials
-          mkdir -p deploy/credentials
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > deploy/credentials/firebase-service-account.json
-
           # Create package.json if needed for Vercel
           echo '{
             "name": "skillup-api",
@@ -163,11 +159,11 @@ jobs:
           echo "{\"orgId\":\"$VERCEL_ORG_ID\",\"projectId\":\"$VERCEL_PROJECT_ID\"}" > .vercel/project.json
 
           # Create production deployment with explicit Vercel configuration
-          DEPLOYMENT_URL=$(vercel --prod --confirm --token "$VERCEL_TOKEN" \
+          DEPLOYMENT_URL=$(vercel --prod --yes --token "$VERCEL_TOKEN" \
             --build-env APP_ENV=production \
             --env APP_ENV=production \
             --env FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }} \
-            --env FIREBASE_SERVICE_ACCOUNT="@credentials/firebase-service-account.json")
+            --env FIREBASE_SERVICE_ACCOUNT="${{ secrets.FIREBASE_SERVICE_ACCOUNT }}")
 
           echo "Deployment URL: $DEPLOYMENT_URL"
           echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
