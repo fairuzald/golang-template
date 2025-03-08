@@ -158,8 +158,12 @@ jobs:
           mkdir -p .vercel
           echo "{\"orgId\":\"$VERCEL_ORG_ID\",\"projectId\":\"$VERCEL_PROJECT_ID\"}" > .vercel/project.json
 
+          # List directory contents for debugging
+          echo "Current directory contents:"
+          ls -la
+
           # Create production deployment with explicit Vercel configuration
-          DEPLOYMENT_URL=$(vercel --prod --yes --token "$VERCEL_TOKEN" \
+          DEPLOYMENT_URL=$(vercel . --prod --yes --token "$VERCEL_TOKEN" \
             --build-env APP_ENV=production \
             --env APP_ENV=production \
             --env FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }} \
