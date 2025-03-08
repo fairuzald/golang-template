@@ -109,11 +109,6 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-prod-${{ hashFiles('**/go.sum') }}-${{ github.sha }}
 
-      - name: 🔄 Generate Swagger Docs
-        run: |
-          go install github.com/swaggo/swag/cmd/swag@latest
-          swag init -g main.go --parseDependency
-
       - name: 🏗️ Build Production Binary
         run: |
           go build -v -ldflags="-s -w" -o build/api ./...
